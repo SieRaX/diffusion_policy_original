@@ -1,0 +1,39 @@
+# Exp1 low-dim training config — composes the base FM low-dim workspace config and
+# layers the experiment hooks on top (no core-loop edits). The 8 runs differ ONLY by
+# the `task=` override (which also carries abs vs. rel actions).
+#
+# Run (from repo root):
+#   python train.py \
+#     --config-dir diffusion_policy/experiments/spatial_attention_exp1/config \
+#     --config-name train_flow_matching_lowdim_exp1 task=lift_lowdim_abs ...
+defaults:
+  - train_flow_matching_unet_lowdim_workspace   # base FM config (in diffusion_policy/config)
+  - exp1_defaults                                # the exp1:* node
+  - _self_
+
+# swap in the CRN-injectable Exp1 policy subclass (identical math + kwargs)
+policy:
+  _target_: diffusion_policy.experiments.spatial_attention_exp1.policy.exp1_flow_matching_unet_lowdim_policy.Exp1FlowMatchingUnetLowdimPolicy
+
+# retain a checkpoint every 10 epochs, keep them all (config-only; no loop edits)
+training:
+  checkpoint_every: 10
+checkpoint:
+  topk:
+    monitor_key: epoch
+    mode: max
+    k: 100000
+    format_str: 'epoch={epoch:04d}.ckpt'
+
+# log designated-state MSE at the SAME cadence as train_action_mse_error
+# (training.sample_every), via the workspace's generic extra_sample_hook. The
+# workspace injects `dataset` and `n_obs_steps` at instantiate time.
+extra_sample_hook:
+  _target_: diffusion_policy.experiments.spatial_attention_exp1.wandb_hook.designated_hook.DesignatedStateMSEHook
+  episode_index: ${exp1.designated_episode_index}
+  fractions: ${exp1.quarter_fractions}
+  k_s: ${exp1.k_s}
+  ode_steps: ${exp1.ode_steps}
+  crn_seed: ${exp1.crn_seed}
+  metric_prefix: ${exp1.wandb_metric_prefix}
+  max_eval_batch: ${exp1.max_eval_batch}

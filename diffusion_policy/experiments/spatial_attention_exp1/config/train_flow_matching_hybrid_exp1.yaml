@@ -1,0 +1,41 @@
+# Exp1 image (hybrid) training config — analogue of the low-dim exp1 config over the
+# base FM hybrid workspace config + the image env-runner wrapper.
+#
+# Run (from repo root):
+#   python train.py \
+#     --config-dir diffusion_policy/experiments/spatial_attention_exp1/config \
+#     --config-name train_flow_matching_hybrid_exp1 task=lift_image_abs ...
+defaults:
+  - train_flow_matching_unet_hybrid_workspace   # base FM hybrid config (in diffusion_policy/config)
+  - exp1_defaults
+  - _self_
+
+policy:
+  _target_: diffusion_policy.experiments.spatial_attention_exp1.policy.exp1_flow_matching_unet_hybrid_image_policy.Exp1FlowMatchingUnetHybridImagePolicy
+
+# lighter dense-eval budget for image
+exp1:
+  subsample_size: 500
+  max_eval_batch: 64
+
+training:
+  checkpoint_every: 10
+checkpoint:
+  topk:
+    monitor_key: epoch
+    mode: max
+    k: 100000
+    format_str: 'epoch={epoch:04d}.ckpt'
+
+# log designated-state MSE at the SAME cadence as train_action_mse_error
+# (training.sample_every), via the workspace's generic extra_sample_hook. The
+# workspace injects `dataset` and `n_obs_steps` at instantiate time.
+extra_sample_hook:
+  _target_: diffusion_policy.experiments.spatial_attention_exp1.wandb_hook.designated_hook.DesignatedStateMSEHook
+  episode_index: ${exp1.designated_episode_index}
+  fractions: ${exp1.quarter_fractions}
+  k_s: ${exp1.k_s}
+  ode_steps: ${exp1.ode_steps}
+  crn_seed: ${exp1.crn_seed}
+  metric_prefix: ${exp1.wandb_metric_prefix}
+  max_eval_batch: ${exp1.max_eval_batch}

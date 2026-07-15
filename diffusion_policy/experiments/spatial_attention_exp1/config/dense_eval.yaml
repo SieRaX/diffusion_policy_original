@@ -1,0 +1,18 @@
+# Dense-eval stage config. Everything experiment-specific (K_s, M, CRN seeds,
+# designated episode/fractions) is read from the checkpoint's saved cfg.exp1; the
+# fields below are the only knobs this stage adds. Leave the optional overrides
+# null to inherit from the checkpoint.
+run_dir: ???            # training run dir containing checkpoints/
+output_dir: ???         # where dense_eval.npz is written
+device: cuda:0
+subsample_size: null    # null -> use cfg.exp1.subsample_size from the checkpoint
+subsample_seed: null    # null -> use cfg.exp1.subsample_seed
+max_eval_batch: null    # null -> use cfg.exp1.max_eval_batch
+output_name: dense_eval.npz
+
+hydra:
+  job:
+    chdir: false        # keep cwd at repo root so relative paths resolve
+  run:
+    dir: .
+  output_subdir: null

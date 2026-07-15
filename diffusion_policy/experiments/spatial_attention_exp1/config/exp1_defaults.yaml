@@ -1,0 +1,15 @@
+# Single source of truth for all Experiment-1 tunables. Included via the training
+# configs' defaults list and saved into every checkpoint's cfg, so the dense-eval
+# and analysis stages read the SAME values back.
+exp1:
+  designated_episode_index: 0
+  quarter_fractions: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  k_s: 16                 # samples per state for MSE(o; theta)
+  ode_steps: 16           # M — forced identical across all evaluations
+  crn_seed: 0             # seed for the fixed {eps0_j}
+  fm_crn_seed: 1          # seed for the fixed {(tau_j, eps_j)}
+  fm_loss_samples: 32     # number of stratified (tau_j, eps_j)
+  wandb_metric_prefix: designated_mse
+  subsample_size: 2000    # dense-eval state subsample (lowdim); hybrid overrides to 500
+  subsample_seed: 0
+  max_eval_batch: 256     # hybrid overrides smaller

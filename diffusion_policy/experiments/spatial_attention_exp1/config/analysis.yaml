@@ -1,0 +1,12 @@
+# Analysis stage config. Consumes only the dense-eval npz (+ its embedded metadata).
+npz: ???                # path to a dense_eval.npz
+output_dir: ???         # where figures + summary.md are written
+npz_compare: null       # optional: other obs-variant npz (same task+abs) for the
+                        # cross-variant episode-timeline overlay
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
