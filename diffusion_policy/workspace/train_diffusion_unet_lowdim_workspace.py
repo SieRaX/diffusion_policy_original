@@ -85,6 +85,15 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
         if cfg.training.use_ema:
             self.ema_model.set_normalizer(normalizer)
 
+        # optional extra metric hook, evaluated at the same cadence as
+        # train_action_mse_error (sample_every). Null by default; experiments set
+        # cfg.extra_sample_hook to a Hydra target whose compute(policy) returns a
+        # dict merged into step_log. Built here so it can reuse this dataset.
+        self._extra_sample_hook = None
+        if cfg.get('extra_sample_hook', None) is not None:
+            self._extra_sample_hook = hydra.utils.instantiate(
+                cfg.extra_sample_hook, dataset=dataset, n_obs_steps=cfg.n_obs_steps)
+
         # configure lr scheduler
         lr_scheduler = get_scheduler(
             cfg.training.lr_scheduler,
@@ -255,6 +264,9 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                         mse = torch.nn.functional.mse_loss(pred_action, gt_action)
                         # log
                         step_log['train_action_mse_error'] = mse.item()
+                        # optional extra metrics at the same (sample) cadence
+                        if getattr(self, '_extra_sample_hook', None) is not None:
+                            step_log.update(self._extra_sample_hook.compute(policy))
                         # release RAM
                         del batch
                         del obs_dict
