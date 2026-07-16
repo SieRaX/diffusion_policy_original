@@ -1,15 +1,19 @@
 """Designated-state MSE hook — the live wandb view.
 
-Given one demonstration episode, this hook resolves four quarter-point env
-timesteps, extracts the (obs, GT-action-chunk) for each ONCE at construction, then
-on every rollout event computes MSE(o; theta) for those four states and returns a
-flat dict of wandb scalars. The env-runner wrapper merges that dict into the
-rollout log, so it is logged at the training loop's `rollout_every` cadence with no
-core-loop edits.
+Given one demonstration episode, this hook:
+  (a) resolves four quarter-point env timesteps and, on every call, logs the
+      per-state MSE for each as wandb SCALARS (x-axis = training step):
+        {prefix}/frac00 .. /frac75            (full chunk)
+        {prefix}_first/frac00 ..              (first executed action)
+  (b) optionally evaluates MSE across the WHOLE designated episode and logs a
+      line plot (x = episode rollout timestep, y = MSE) as a wandb.Image under
+        {prefix}_episode_curve
+      Logging an image every cadence makes wandb render a media panel with a
+      training-step slider ("controllable bar") to scrub how the curve evolves.
 
-Metric names (stable across tasks/episodes of different lengths):
-  {prefix}/frac00, /frac25, /frac50, /frac75            (full chunk)
-  {prefix}_first/frac00, ...                            (first executed action)
+All (obs, GT-action-chunk) states are extracted ONCE at construction (then the
+dataset reference is dropped). The metric uses common random numbers, so the same
+noise is reused across states, calls, and checkpoints.
 """
 import numpy as np
 
@@ -30,10 +34,16 @@ class DesignatedStateMSEHook:
             metric_prefix='designated_mse',
             max_eval_batch=256,
             num_fm=32,
-            fm_seed=1):
+            fm_seed=1,
+            episode_curve=True,
+            episode_curve_stride=1,
+            episode_curve_every=1):
         self.metric_prefix = metric_prefix
         self.episode_index = int(episode_index)
+        self.episode_curve = bool(episode_curve)
+        self.episode_curve_every = max(1, int(episode_curve_every))
         self._summary_logged = False
+        self._curve_call_count = 0
 
         indices = dataset.sampler.indices
         episode_ends = dataset.replay_buffer.episode_ends
@@ -58,6 +68,25 @@ class DesignatedStateMSEHook:
         self.obs_dict, self.gt = state_provider.build_state_batch(dataset, sample_indices)
         H, D = self.gt.shape[1], self.gt.shape[2]
 
+        # optionally extract the FULL designated episode (sorted by timestep) for
+        # the episode-curve image
+        self.ep_obs_dict = None
+        self.ep_gt = None
+        self.ep_timesteps = None
+        if self.episode_curve:
+            ep_idx = state_provider.episode_sample_indices(
+                indices, episode_ends, n_obs_steps, self.episode_index)
+            ep_ts = np.array([
+                state_provider.invert_sample_index(indices, episode_ends, n_obs_steps, i)[1]
+                for i in ep_idx])
+            order = np.argsort(ep_ts)
+            ep_idx, ep_ts = ep_idx[order], ep_ts[order]
+            stride = max(1, int(episode_curve_stride))
+            ep_idx, ep_ts = ep_idx[::stride], ep_ts[::stride]
+            self.ep_timesteps = ep_ts
+            self.ep_obs_dict, self.ep_gt = state_provider.build_state_batch(
+                dataset, ep_idx.tolist())
+
         crn = CRNManager(k_s=k_s, horizon=H, action_dim=D,
             num_fm=num_fm, eps0_seed=crn_seed, fm_seed=fm_seed)
         self.metric = PerStateMSEMetric(crn, ode_steps=ode_steps, max_eval_batch=max_eval_batch)
@@ -78,6 +107,33 @@ class DesignatedStateMSEHook:
         except Exception:
             pass  # wandb optional / offline
 
+    def _episode_curve_image(self, policy):
+        """MSE-vs-episode-timestep line plot as a wandb.Image (None if unavailable)."""
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            import wandb
+        except Exception:
+            return None
+        res = self.metric.compute_mse(policy, self.ep_obs_dict, self.ep_gt)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(self.ep_timesteps, np.clip(res['scalar'], 1e-12, None),
+                marker='.', linewidth=1.0, label='full chunk')
+        ax.plot(self.ep_timesteps, np.clip(res['first'], 1e-12, None),
+                marker='.', linewidth=1.0, label='first executed')
+        for t in self.timesteps:  # mark the quarter points
+            ax.axvline(t, color='k', linestyle=':', alpha=0.3)
+        ax.set_yscale('log')
+        ax.set_xlabel('episode rollout timestep')
+        ax.set_ylabel('sampled-action MSE (log)')
+        ax.set_title(f'{self.metric_prefix} vs episode timestep (episode {self.episode_index})')
+        ax.legend()
+        fig.tight_layout()
+        img = wandb.Image(fig)
+        plt.close(fig)
+        return img
+
     def compute(self, policy):
         self._log_summary_once()
         res = self.metric.compute_mse(policy, self.obs_dict, self.gt)
@@ -85,4 +141,11 @@ class DesignatedStateMSEHook:
         for i, lbl in enumerate(self.labels):
             log[f'{self.metric_prefix}/{lbl}'] = float(res['scalar'][i])
             log[f'{self.metric_prefix}_first/{lbl}'] = float(res['first'][i])
+
+        if self.episode_curve and self.ep_obs_dict is not None:
+            if (self._curve_call_count % self.episode_curve_every) == 0:
+                img = self._episode_curve_image(policy)
+                if img is not None:
+                    log[f'{self.metric_prefix}_episode_curve'] = img
+            self._curve_call_count += 1
         return log

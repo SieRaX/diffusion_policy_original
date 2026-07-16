@@ -37,3 +37,6 @@ extra_sample_hook:
   crn_seed: ${exp1.crn_seed}
   metric_prefix: ${exp1.wandb_metric_prefix}
   max_eval_batch: ${exp1.max_eval_batch}
+  episode_curve: ${exp1.episode_curve}
+  episode_curve_stride: ${exp1.episode_curve_stride}
+  episode_curve_every: ${exp1.episode_curve_every}

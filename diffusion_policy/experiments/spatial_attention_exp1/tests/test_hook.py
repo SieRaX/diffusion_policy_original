@@ -46,8 +46,9 @@ def test_hook_produces_designated_metrics():
     for frac in ['frac00', 'frac25', 'frac50', 'frac75']:
         assert f'designated_mse/{frac}' in log
         assert f'designated_mse_first/{frac}' in log
-    assert all(np.isfinite(v) for v in log.values())
-    assert len(log) == 8
+    # scalar finiteness (skip the episode-curve image object)
+    assert all(np.isfinite(v) for v in log.values() if isinstance(v, float))
+    assert sum(isinstance(v, float) for v in log.values()) == 8
 
 
 def test_hook_crn_reused_across_calls():
@@ -59,8 +60,10 @@ def test_hook_crn_reused_across_calls():
     policy = DummyPolicy(mode='noise', n_obs_steps=TO, horizon=H, action_dim=ACT_DIM)
     a = hook.compute(policy)
     b = hook.compute(policy)
-    # deterministic across rollout events (same CRN reused)
-    assert a == b
+    # deterministic across rollout events (same CRN reused); compare scalars only
+    sa = {k: v for k, v in a.items() if isinstance(v, float)}
+    sb = {k: v for k, v in b.items() if isinstance(v, float)}
+    assert sa == sb
 
 
 class FakeImageDataset:
@@ -98,7 +101,52 @@ def test_hook_compatible_with_image_dict_obs():
     for frac in ['frac00', 'frac25', 'frac50', 'frac75']:
         assert f'designated_mse/{frac}' in log
         assert f'designated_mse_first/{frac}' in log
-    assert all(np.isfinite(v) for v in log.values())
+    assert all(np.isfinite(v) for v in log.values() if isinstance(v, float))
+
+
+def test_hook_episode_curve_image():
+    import wandb
+    dataset = FakeLowdimDataset([20, 25])
+    hook = DesignatedStateMSEHook(
+        dataset=dataset, n_obs_steps=TO, episode_index=0,
+        fractions=[0.0, 0.25, 0.5, 0.75], k_s=2, ode_steps=2,
+        crn_seed=0, metric_prefix='designated_mse', max_eval_batch=16,
+        episode_curve=True)
+    policy = DummyPolicy(mode='noise', n_obs_steps=TO, horizon=H, action_dim=ACT_DIM)
+    log = hook.compute(policy)
+    key = 'designated_mse_episode_curve'
+    assert key in log and isinstance(log[key], wandb.Image)
+    # the curve spans the sampled episode timesteps (more than the 4 quarter points)
+    assert len(hook.ep_timesteps) > 4
+
+
+def test_hook_episode_curve_every_gating():
+    dataset = FakeLowdimDataset([20])
+    hook = DesignatedStateMSEHook(
+        dataset=dataset, n_obs_steps=TO, episode_index=0,
+        fractions=[0.0, 0.25, 0.5, 0.75], k_s=2, ode_steps=2,
+        crn_seed=0, metric_prefix='designated_mse', max_eval_batch=16,
+        episode_curve=True, episode_curve_every=2)
+    policy = DummyPolicy(mode='noise', n_obs_steps=TO, horizon=H, action_dim=ACT_DIM)
+    key = 'designated_mse_episode_curve'
+    assert key in hook.compute(policy)       # call 0 -> emit
+    assert key not in hook.compute(policy)   # call 1 -> skip
+    assert key in hook.compute(policy)       # call 2 -> emit
+    # scalar metrics are logged on every call regardless
+    assert 'designated_mse/frac00' in hook.compute(policy)
+
+
+def test_hook_episode_curve_disabled():
+    dataset = FakeLowdimDataset([20])
+    hook = DesignatedStateMSEHook(
+        dataset=dataset, n_obs_steps=TO, episode_index=0,
+        fractions=[0.0, 0.25, 0.5, 0.75], k_s=2, ode_steps=2,
+        crn_seed=0, metric_prefix='designated_mse', max_eval_batch=16,
+        episode_curve=False)
+    policy = DummyPolicy(mode='noise', n_obs_steps=TO, horizon=H, action_dim=ACT_DIM)
+    log = hook.compute(policy)
+    assert 'designated_mse_episode_curve' not in log
+    assert hook.ep_obs_dict is None
 
 
 def test_hook_drops_dataset_reference():

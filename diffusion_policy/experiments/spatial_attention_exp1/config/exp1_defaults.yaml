@@ -12,4 +12,12 @@ exp1:
   wandb_metric_prefix: designated_mse
   subsample_size: 2000    # dense-eval state subsample (lowdim); hybrid overrides to 500
   subsample_seed: 0
+  # live episode-curve image (x = episode rollout timestep, y = MSE); logged as a
+  # wandb media panel whose training-step slider is the "controllable bar".
+  # episode_curve_every counts SAMPLE-cadence calls (each = training.sample_every
+  # epochs); the eval below syncs the curve to the rollout / success-rate epochs
+  # (= rollout_every // sample_every). Raise episode_curve_stride to thin the curve.
+  episode_curve: true
+  episode_curve_stride: 4
+  episode_curve_every: ${eval:${training.rollout_every} // ${training.sample_every}}
   max_eval_batch: 256     # hybrid overrides smaller
