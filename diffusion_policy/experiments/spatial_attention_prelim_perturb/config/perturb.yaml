@@ -1,0 +1,47 @@
+# Perturbation-sensitivity measurement — MEASUREMENT PARAMETERS ONLY.
+# Task / obs variant / dataset / n_obs_steps / horizon / abs_action are DERIVED
+# FROM THE CHECKPOINT, never configured here.
+
+checkpoint: ???              # path to a flow-matching .ckpt (required)
+dataset_path_override: null  # only if the training-time dataset path is invalid here
+demo_index: 0
+stride: 1                    # evaluate every stride-th env timestep
+
+K: 8                         # perturbations per timestep
+N: 16                        # fixed CRN initial noises {eps0_j}
+M: null                      # ODE steps; null -> policy.num_inference_steps
+
+sigma_pos:                   # position noise std (meters)
+  eef: 0.005
+  object: 0.005
+sigma_rot:                   # orientation noise std (radians)
+  eef: 0.02
+  object: 0.02
+per_body_sigma: null         # optional {body_name: {sigma_pos, sigma_rot}} for non-grasped bodies
+
+object_bodies: null          # optional {task_base: [object_name, ...]} override of the per-task lookup
+perturb_targets: [objects]   # [objects] (default). [eef, objects] is a stub (needs IK) -> raises.
+history_mode: tile_perturbed # tile_perturbed | consistent_perturbed | current_frame_only
+distance_space: both         # both | raw | norm
+grasp_qpos_threshold: 0.06   # heuristic: sum(|finger qpos|) below this == closed (Panda-specific)
+settle_steps: 0              # >0 would change the probed state (do not settle)
+source: dataset              # dataset only; TODO: rollout would need measurement isolation
+
+control_stride: 10           # nominal-vs-nominal control every control_stride-th evaluated step
+seeds:
+  perturb: 0
+  crn: 0
+  crn_control: 1             # reserved
+
+device: cuda:0
+max_batch: 64                # cap on the (samples) batch per predict_action call
+output_dir: null             # base dir; null -> <checkpoint-without-extension>/
+                             # prelim_perturb_<task>_<abs|rel> . episode_<demo_index>
+                             # is ALWAYS appended under the base.
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

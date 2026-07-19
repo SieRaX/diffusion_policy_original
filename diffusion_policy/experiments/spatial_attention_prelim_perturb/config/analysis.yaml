@@ -1,0 +1,9 @@
+npz: ???            # path to a perturb.npz
+output_dir: ???     # where figures + summary.md are written
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
