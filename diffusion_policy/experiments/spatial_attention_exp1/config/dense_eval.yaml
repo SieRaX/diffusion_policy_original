@@ -8,6 +8,9 @@ device: cuda:0
 subsample_size: null    # null -> use cfg.exp1.subsample_size from the checkpoint
 subsample_seed: null    # null -> use cfg.exp1.subsample_seed
 max_eval_batch: null    # null -> use cfg.exp1.max_eval_batch
+episode_index: null     # null -> use cfg.exp1.designated_episode_index; set e.g. 1
+                        # to analyze a different episode from the same checkpoints
+fractions: null         # null -> use cfg.exp1.quarter_fractions
 output_name: dense_eval.npz
 
 hydra:

@@ -37,6 +37,8 @@ def main(cfg):
         subsample_size=cfg.get('subsample_size', None),
         subsample_seed=cfg.get('subsample_seed', None),
         max_eval_batch=cfg.get('max_eval_batch', None),
+        episode_index=cfg.get('episode_index', None),
+        fractions=cfg.get('fractions', None),
         output_name=cfg.get('output_name', 'dense_eval.npz'),
     )
 

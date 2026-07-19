@@ -46,6 +46,7 @@ def _obs_variant(obs_dict):
 
 def run(run_dir, output_dir, device='cuda:0',
         subsample_size=None, subsample_seed=None, max_eval_batch=None,
+        episode_index=None, fractions=None,
         output_name='dense_eval.npz'):
     os.makedirs(output_dir, exist_ok=True)
     ckpts = find_checkpoints(run_dir)
@@ -73,8 +74,12 @@ def run(run_dir, output_dir, device='cuda:0',
     crn_seed = int(exp1.get('crn_seed', 0))
     fm_seed = int(exp1.get('fm_crn_seed', 1))
     num_fm = int(exp1.get('fm_loss_samples', 32))
-    episode_index = int(exp1.get('designated_episode_index', 0))
-    fractions = list(exp1.get('quarter_fractions', [0.0, 0.25, 0.5, 0.75]))
+    # episode_index / fractions default to the checkpoint's training cfg, but can be
+    # overridden here to analyze a DIFFERENT episode from the same checkpoints
+    # (no re-training needed).
+    episode_index = int(pick(episode_index, 'designated_episode_index', 0))
+    fractions = list(fractions) if fractions is not None \
+        else list(exp1.get('quarter_fractions', [0.0, 0.25, 0.5, 0.75]))
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace = cls(cfg, output_dir=output_dir)
