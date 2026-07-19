@@ -14,6 +14,10 @@ def _model(i, c, b, lam):
     return c + b * np.exp(-lam * i)
 
 
+def _log_model(i, c, b, lam):
+    return np.log(np.clip(c + b * np.exp(-lam * i), 1e-30, None))
+
+
 def fit_state(mse, x=None):
     """Return (c, b, lam, success) for a single state's MSE-over-checkpoints."""
     mse = np.asarray(mse, dtype=float)
@@ -21,14 +25,20 @@ def fit_state(mse, x=None):
     if x is None:
         x = np.arange(C, dtype=float)
 
-    c0 = float(np.min(mse))
-    b0 = float(max(mse[0] - c0, 1e-6))
+    y = np.clip(mse, 1e-12, None)
+    c0 = float(np.min(y))
+    b0 = float(max(y[0] - c0, 1e-6))
     p0 = [c0, b0, 0.1]
     try:
+        # Fit in LOG space. MSE spans many orders of magnitude and is read on a log
+        # axis, so a linear-scale least-squares fit is dominated by the large early
+        # values and leaves the floor c essentially unconstrained (the tiny tail
+        # contributes ~nothing) -> c lands decades too high. Fitting log(MSE) makes
+        # the residuals relative, so c tracks the actual floor.
         popt, _ = curve_fit(
-            _model, x, mse, p0=p0,
+            _log_model, x, np.log(y), p0=p0,
             bounds=([0.0, 0.0, 0.0], [np.inf, np.inf, np.inf]),
-            maxfev=10000)
+            maxfev=20000)
         c, b, lam = (float(v) for v in popt)
         if not np.all(np.isfinite([c, b, lam])):
             raise RuntimeError("non-finite fit")
