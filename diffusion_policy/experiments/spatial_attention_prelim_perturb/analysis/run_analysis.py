@@ -27,14 +27,14 @@ def _grasp_masks(data):
     return grasped, ~grasped
 
 
-def analyze(npz_path, output_dir):
+def analyze(npz_path, output_dir, yscale='log'):
     os.makedirs(output_dir, exist_ok=True)
     data = _load(npz_path)
     spaces = [str(s) for s in data['distance_spaces']]
 
     figs = []
     for sp in spaces:
-        figs.append(plots.plot_timeline(data, sp, output_dir))
+        figs.append(plots.plot_timeline(data, sp, output_dir, yscale=yscale))
         figs.append(plots.plot_heatmap(data, sp, output_dir))
     rank_fig = plots.plot_rank_comparison(data, output_dir)
     if rank_fig:
@@ -97,7 +97,7 @@ def analyze(npz_path, output_dir):
     config_name='analysis')
 def main(cfg):
     OmegaConf.resolve(cfg)
-    analyze(cfg.npz, cfg.output_dir)
+    analyze(cfg.npz, cfg.output_dir, yscale=cfg.get('yscale', 'log'))
 
 
 if __name__ == '__main__':

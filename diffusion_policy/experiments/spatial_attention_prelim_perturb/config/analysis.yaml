@@ -1,5 +1,6 @@
 npz: ???            # path to a perturb.npz
 output_dir: ???     # where figures + summary.md are written
+yscale: log         # timeline y-axis: log (default, decade+minor ticks) | linear
 
 hydra:
   job:

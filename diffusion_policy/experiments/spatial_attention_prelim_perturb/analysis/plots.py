@@ -31,9 +31,15 @@ def _shade_grasp(ax, ts, grasped_any):
             i += 1
 
 
-def plot_timeline(data, space, out_dir):
-    """S(t) & S_first(t) vs t (log y) for one distance space, with grasp shading,
-    D_k 10-90 percentile band, and the nominal-vs-nominal control overlaid."""
+def plot_timeline(data, space, out_dir, yscale='log'):
+    """S(t) & S_first(t) vs t for one distance space, with grasp shading, D_k
+    10-90 percentile band, and the nominal-vs-nominal control overlaid.
+
+    yscale='log' (default): y-limits are taken from the SIGNAL (S/S_first/D_k), not
+    the ~0 control (which would otherwise force ~30 wasted decades); the control is
+    clipped to the axis floor and its true magnitude is shown in the legend. Decade
+    major ticks + 2-9 minor ticks + a grid are added. yscale='linear': axis from 0."""
+    from matplotlib.ticker import LogLocator
     path = os.path.join(out_dir, f'timeline_{space}.png')
     ts = data['timesteps']
     S = data[f'S_{space}']
@@ -42,21 +48,38 @@ def plot_timeline(data, space, out_dir):
     ctrl = data[f'control_{space}']               # (T,)
     grasped_any = _grasped_any(data)
 
+    if yscale == 'log':
+        sig = np.concatenate([S, Sf, Dk.ravel()])
+        sig = sig[np.isfinite(sig) & (sig > 0)]
+        floor = float(sig.min() * 0.5) if sig.size else 1e-9
+        top = float(sig.max() * 2.0) if sig.size else 1.0
+        clip = lambda a: np.clip(a, floor, None)
+    else:
+        clip = lambda a: a
+
     fig, ax = plt.subplots(figsize=(11, 5))
     _shade_grasp(ax, ts, grasped_any)
     if Dk.shape[1] > 1:
-        lo = np.percentile(Dk, 10, axis=1)
-        hi = np.percentile(Dk, 90, axis=1)
+        lo = clip(np.percentile(Dk, 10, axis=1))
+        hi = clip(np.percentile(Dk, 90, axis=1))
         ax.fill_between(ts, lo, hi, color='C0', alpha=0.15, label='D_k 10-90%')
-    ax.plot(ts, S, marker='.', color='C0', label=f'S (full chunk) [{space}]')
-    ax.plot(ts, Sf, marker='.', color='C1', label=f'S_first (executed) [{space}]')
+    ax.plot(ts, clip(S), marker='.', color='C0', label=f'S (full chunk) [{space}]')
+    ax.plot(ts, clip(Sf), marker='.', color='C1', label=f'S_first (executed) [{space}]')
     cm = np.isfinite(ctrl)
     if cm.any():
-        ax.plot(ts[cm], ctrl[cm], 'x', color='k',
-                markersize=5, label='control (nom-vs-nom ~0)')
-    # non-negative distances that don't span decades -> linear axis from 0. (log
-    # wasted ~30 decades because the nominal-vs-nominal control sits at ~0.)
-    ax.set_ylim(bottom=0)
+        cmax = float(np.nanmax(ctrl[cm]))
+        ax.plot(ts[cm], clip(ctrl[cm]), 'x', color='k', markersize=5,
+                label=f'control (nom-vs-nom, max={cmax:.1e})')
+    if yscale == 'log':
+        ax.set_yscale('log')
+        ax.set_ylim(floor, top)
+        ax.yaxis.set_major_locator(LogLocator(base=10.0))
+        ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10), numticks=100))
+        ax.grid(True, which='major', alpha=0.35)
+        ax.grid(True, which='minor', alpha=0.12)
+    else:
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.25)
     ax.set_xlabel('episode timestep t')
     ax.set_ylabel(f'coupled endpoint distance ({space})')
     ax.set_title(f"Perturbation sensitivity vs timestep — {data['task_name']} "
