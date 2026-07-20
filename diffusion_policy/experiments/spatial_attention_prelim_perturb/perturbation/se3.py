@@ -76,6 +76,48 @@ def perturb_pose_independent(rng, pos, quat, sigma_pos, sigma_rot):
     return new_pos, new_quat
 
 
+def mat_to_quat(R):
+    """3x3 rotation matrix -> (w,x,y,z) unit quaternion."""
+    R = np.asarray(R, dtype=np.float64)
+    t = np.trace(R)
+    if t > 0:
+        s = np.sqrt(t + 1.0) * 2.0
+        w = 0.25 * s
+        x = (R[2, 1] - R[1, 2]) / s
+        y = (R[0, 2] - R[2, 0]) / s
+        z = (R[1, 0] - R[0, 1]) / s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2.0
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2.0
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2.0
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
+    return quat_normalize(np.array([w, x, y, z]))
+
+
+def compose_delta(pos0, quat0, pos1, quat1):
+    """The rigid ΔT that maps pose0 -> pose1, i.e. ΔT with ΔT · T0 = T1.
+    dpos = p1 - R(ΔT)·p0, R(ΔT) = R1·R0^T. Used to read off the EEF's INDUCED
+    transform after an arm-qpos perturbation, so a grasped body can follow it."""
+    R0 = quat_to_mat(quat0)
+    R1 = quat_to_mat(quat1)
+    Rd = R1 @ R0.T
+    dpos = np.asarray(pos1, dtype=np.float64) - Rd @ np.asarray(pos0, dtype=np.float64)
+    return dpos, mat_to_quat(Rd)
+
+
 def sample_delta_transform(rng, sigma_pos, sigma_rot):
     """A rigid SE(3) increment ΔT = (dpos, dquat), drawn with the EEF sigmas.
     Used for grasp-aware coupling (applied to every grasped body)."""

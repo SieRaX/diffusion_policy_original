@@ -29,6 +29,27 @@ def test_perturb_pose_independent_keeps_unit_quat():
     assert np.all(np.isfinite(p2)) and np.all(np.isfinite(q2))
 
 
+def test_mat_to_quat_roundtrip():
+    rng = np.random.default_rng(4)
+    for _ in range(50):
+        q = se3.quat_normalize(rng.normal(size=4))
+        R = se3.quat_to_mat(q)
+        q2 = se3.mat_to_quat(R)
+        assert np.allclose(q, q2, atol=1e-8) or np.allclose(q, -q2, atol=1e-8)
+
+
+def test_compose_delta_recovers_transform():
+    """compose_delta(T0, T1) must give the ΔT with ΔT·T0 = T1 (induced EEF move)."""
+    rng = np.random.default_rng(5)
+    p0 = rng.normal(size=3); q0 = se3.quat_normalize(rng.normal(size=4))
+    dpos, dquat = se3.sample_delta_transform(rng, 0.02, 0.1)
+    p1, q1 = se3.apply_delta_transform(dpos, dquat, p0, q0)     # T1 = ΔT·T0
+    rdpos, rdquat = se3.compose_delta(p0, q0, p1, q1)
+    rp1, rq1 = se3.apply_delta_transform(rdpos, rdquat, p0, q0)  # re-apply recovered ΔT
+    assert np.allclose(rp1, p1, atol=1e-9)
+    assert np.allclose(rq1, q1, atol=1e-8) or np.allclose(rq1, -q1, atol=1e-8)
+
+
 def test_delta_transform_preserves_relative_pose():
     """Two bodies transformed by the SAME ΔT keep their relative pose (grasp coupling)."""
     rng = np.random.default_rng(3)

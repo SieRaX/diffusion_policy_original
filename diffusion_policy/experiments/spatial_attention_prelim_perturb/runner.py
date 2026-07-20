@@ -145,6 +145,8 @@ def run(cfg):
                           for k, v in cfg.per_body_sigma.items()}
     perturb_targets = list(cfg.perturb_targets)
     K = int(cfg.K)
+    sigma_qpos = float(cfg.get('sigma_qpos', 0.0))
+    n_arm = len(rs_env.robots[0]._ref_joint_pos_indexes) if 'eef' in perturb_targets else None
 
     # --- episode loop ---
     ts = list(range(0, ep_len, int(cfg.stride)))
@@ -163,7 +165,8 @@ def run(cfg):
         perturbed = []
         for _k in range(K):
             realization = sample_realization(bodies, rng_t, spe, sre, spo, sro,
-                                             per_body_sigma=per_body_sigma)
+                                             per_body_sigma=per_body_sigma,
+                                             sigma_qpos=sigma_qpos, n_arm_joints=n_arm)
             applier = obs_builder.make_perturb_applier(
                 bodies, realization, float(cfg.grasp_qpos_threshold),
                 perturb_targets, int(cfg.settle_steps))

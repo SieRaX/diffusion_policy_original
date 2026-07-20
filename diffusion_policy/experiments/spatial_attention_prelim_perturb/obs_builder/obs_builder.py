@@ -115,7 +115,7 @@ def make_perturb_applier(bodies, realization, grasp_qpos_threshold,
             sim.forward()
             return None
         flags = [is_grasped(rs_env, sim, b, grasp_qpos_threshold) for b in bodies]
-        apply_realization(sim, bodies, flags, realization,
+        apply_realization(sim, bodies, flags, realization, rs_env=rs_env,
                           perturb_targets=perturb_targets, settle_steps=settle_steps)
         return flags
     return apply

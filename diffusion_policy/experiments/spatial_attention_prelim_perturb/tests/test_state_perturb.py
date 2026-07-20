@@ -3,6 +3,7 @@ import numpy as np
 
 from diffusion_policy.experiments.spatial_attention_prelim_perturb.perturbation import se3
 from diffusion_policy.experiments.spatial_attention_prelim_perturb.perturbation.bodies import PerturbBody
+from diffusion_policy.experiments.spatial_attention_prelim_perturb.perturbation import state_perturb
 from diffusion_policy.experiments.spatial_attention_prelim_perturb.perturbation.state_perturb import (
     sample_realization, apply_realization,
 )
@@ -92,11 +93,39 @@ def test_nongrasped_body_perturbed_independently():
     assert np.allclose(free_after[:3], expected_pos, atol=1e-9)
 
 
-def test_eef_target_raises():
-    sim = _FakeSim({'a': _pose([0, 0, 0], [1, 0, 0, 0])}, {'a': (0, 6)})
-    import pytest
-    with pytest.raises(NotImplementedError):
-        apply_realization(sim, [_body('a')], [False],
-                          sample_realization([_body('a')], np.random.default_rng(0),
-                                             0.01, 0.05, 0.005, 0.02),
-                          perturb_targets=('eef', 'objects'))
+def test_arm_qpos_noise_sampled_reproducibly():
+    bodies = [_body('a')]
+    args = (0.01, 0.05, 0.005, 0.02)
+    r1 = sample_realization(bodies, np.random.default_rng(0), *args, sigma_qpos=0.02, n_arm_joints=7)
+    r2 = sample_realization(bodies, np.random.default_rng(0), *args, sigma_qpos=0.02, n_arm_joints=7)
+    assert r1.arm_qpos_noise.shape == (7,)
+    assert np.allclose(r1.arm_qpos_noise, r2.arm_qpos_noise)          # reproducible
+    assert sample_realization(bodies, np.random.default_rng(0), *args).arm_qpos_noise is None
+
+
+def test_eef_mode_grasped_follows_induced_delta(monkeypatch):
+    """In eef mode a grasped body is carried by the EEF's induced ΔT, and a
+    non-grasped body still gets its own independent noise."""
+    known_dpos = np.array([0.01, 0.0, 0.0]); known_dquat = np.array([1.0, 0, 0, 0])
+    seen = {}
+
+    def fake_arm(sim, rs_env, arm_noise):        # stub out the FK-dependent measurement
+        seen['noise'] = np.asarray(arm_noise).copy()
+        return known_dpos, known_dquat
+
+    monkeypatch.setattr(state_perturb, '_apply_arm_noise', fake_arm)
+    poses = {'grasped': _pose([0.4, 0, 0.85], [1, 0, 0, 0]),
+             'free': _pose([0.6, 0.2, 0.85], [1, 0, 0, 0])}
+    sim = _FakeSim(poses, {'grasped': (0, 6), 'free': (6, 12)})
+    bodies = [_body('grasped'), _body('free')]
+    real = sample_realization(bodies, np.random.default_rng(0), 0.01, 0.05, 0.005, 0.02,
+                              sigma_qpos=0.01, n_arm_joints=7)
+
+    apply_realization(sim, bodies, [True, False], real, rs_env=object(),
+                      perturb_targets=('eef', 'objects'))
+
+    assert np.allclose(seen['noise'], real.arm_qpos_noise)            # arm noise applied
+    grasped = sim.data.get_joint_qpos('grasped')
+    assert np.allclose(grasped[:3], poses['grasped'][:3] + known_dpos, atol=1e-9)  # follows induced ΔT
+    free = sim.data.get_joint_qpos('free')
+    assert np.allclose(free[:3], poses['free'][:3] + real.body_deltas['free'][0], atol=1e-9)
