@@ -8,6 +8,10 @@ _target_: diffusion_policy.workspace.train_diffusion_unet_hybrid_workspace.Train
 task_name: ${task.name}
 shape_meta: ${task.shape_meta}
 exp_name: "default"
+# "_abs" if the task uses absolute actions, else "_rel" (for run-dir / naming).
+# Defined here (YAML) because the inline ${eval:...} form cannot be passed as a
+# CLI override value; reference it as a plain ${abs_tag} interpolation instead.
+abs_tag: "${eval:\"'_abs' if ${task.abs_action} else '_rel'\"}"
 
 horizon: 16
 n_obs_steps: 2
